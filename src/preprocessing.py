@@ -15,12 +15,12 @@ class HotelDataPreprocessor:
         """
         # Use predefined price caps per star rating (based on analysis)
         price_caps = {
-            0: 1000,    # Unknown/unrated hotels
-            1: 500,     # 1-star hotels
-            2: 1000,    # 2-star hotels
-            3: 2000,    # 3-star hotels
-            4: 5000,    # 4-star hotels
-            5: 10000    # 5-star hotels
+            0: 100,    # Unknown/unrated hotels
+            1: 120,     # 1-star hotels
+            2: 150,    # 2-star hotels
+            3: 200,    # 3-star hotels
+            4: 250,    # 4-star hotels
+            5: 300    # 5-star hotels
         }
         
         # Cap prices based on star rating
