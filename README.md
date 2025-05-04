@@ -1,34 +1,92 @@
 # Hotel Click and Booking Prediction
 
-This project implements a machine learning system to predict which hotel properties users are most likely to click on and book based on search results data. The model uses LightGBM for learning-to-rank optimization to improve search result rankings.
+This project implements a machine learning system to predict which hotel properties users are most likely to click on and book based on search results data. The model uses advanced data analysis and visualization techniques to understand patterns in hotel bookings and clicks.
 
 ## Project Structure
 
 ```
 hotel-estimation/
 ├── data/
-│   └── raw/         # Raw training data (training_set_VU_DM.csv)
+│   ├── raw/           # Raw training data
+│   ├── processed/     # Preprocessed and cleaned data
+│   └── analysis/      # Analysis outputs
+│       ├── plots/     # Visualization plots
+│       └── tables/    # LaTeX tables with statistics
 ├── src/
-│   ├── preprocess.py  # Data preprocessing and feature engineering
-│   └── train_model.py  # Model training and evaluation
-└── requirements.txt    # Project dependencies
+│   ├── data_analysis.py     # Data analysis and visualization
+│   ├── preprocessing.py     # Data cleaning and preprocessing
+│   ├── feature_engineering.py # Feature creation and transformation
+│   └── train_model.py       # Model training and evaluation
+└── requirements.txt         # Project dependencies
 ```
 
 ## Features
 
+### Data Analysis
+- Enhanced distribution plots with outlier handling
+- Statistical analysis of numerical features
+- Missing value analysis and visualization
+- Conversion rate analysis by price quartiles
+- Competitor rate analysis
+- Search pattern analysis
+
 ### Data Preprocessing
-- Temporal feature extraction (hour, day, month)
-- Price-related feature engineering
+- Memory-efficient data processing using chunks
+- Data type optimization
+- Missing value handling
+- Outlier detection and treatment
+
+### Feature Engineering
+- Price-related features
+- Temporal features (booking window, length of stay)
 - Competitor analysis features
 - Location score processing
-- Historical user preference features
+- Property characteristics
 - Search context features
 
-### Model Implementation
-- LightGBM ranking model
-- Hyperparameter optimization using Optuna
-- Learning-to-rank objective (LambdaRank)
-- Evaluation metrics:
+### Visualizations
+- Distribution plots with outlier analysis
+- Missing value heatmaps
+- Price impact visualizations
+- Competitor price difference analysis
+- Search pattern distributions
+
+### Analysis Outputs
+- LaTeX tables for statistical summaries
+- Enhanced distribution plots with detailed statistics
+- Comprehensive data quality reports
+- Search pattern insights
+- Competitive pricing analysis
+
+## Getting Started
+
+1. Clone the repository
+2. Create a virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+   ```
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. Place the training data in `data/raw/`
+5. Run the analysis:
+   ```bash
+   python src/data_analysis.py
+   ```
+
+## Data Files
+
+Note: Large data files are not included in the repository. You'll need to obtain:
+- `training_set_VU_DM.csv` (place in `data/raw/`)
+
+## Output
+
+The analysis generates:
+- Visualization plots in `data/analysis/plots/`
+- Statistical tables in `data/analysis/tables/`
+- Processed data in `data/processed/`
   - AUC-ROC for clicks and bookings
   - Average Precision
   - NDCG@10 for ranking quality
