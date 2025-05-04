@@ -1,0 +1,136 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{amsmath}
+
+\title{Hotel Booking Dataset Analysis Report}
+\author{Data Analysis Team}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Executive Summary}
+This report presents a comprehensive analysis of the hotel booking dataset, which contains information about hotel searches, bookings, and competitive pricing. The dataset consists of 54 variables across multiple dimensions including search characteristics, property features, and competitive rates.
+
+\section{Dataset Overview}
+\subsection{Basic Statistics}
+The dataset contains:
+\begin{itemize}
+    \item 54 total variables (53 numerical, 1 categorical)
+    \item Approximately 5 million rows (processed in chunks of 100,000)
+    \item Key features include property information, search parameters, and competitive pricing
+\end{itemize}
+
+\input{../tables/data_types}
+
+\section{Key Findings}
+
+\subsection{Search Patterns}
+\subsubsection{Length of Stay}
+The analysis of booking duration reveals:
+\begin{itemize}
+    \item Mean stay duration: 2.37 days
+    \item Median stay: 2 days
+    \item 75\% of bookings are for 3 days or less
+    \item Maximum stay duration: 28 days
+\end{itemize}
+
+\subsubsection{Booking Window}
+The advance booking patterns show:
+\begin{itemize}
+    \item Mean booking window: 38.5 days
+    \item Median booking window: 18 days
+    \item 75\% of bookings are made within 51 days
+    \item Some bookings are made up to 467 days in advance
+\end{itemize}
+
+\subsection{Room and Guest Statistics}
+The typical booking profile shows:
+\begin{itemize}
+    \item Average number of adults: 1.97 per booking
+    \item Average number of children: 0.34 per booking
+    \item Average number of rooms: 1.10 per booking
+    \item Average guests per room: approximately 2.1
+\end{itemize}
+
+\section{Property Characteristics}
+\subsection{Star Ratings and Review Scores}
+\input{../tables/numeric_stats}
+
+The property ratings analysis shows a diverse range of accommodations:
+\begin{itemize}
+    \item Star ratings range from budget to luxury properties
+    \item Review scores provide insight into guest satisfaction
+    \item Location scores indicate the relative desirability of property locations
+\end{itemize}
+
+\section{Competitive Analysis}
+\subsection{Price Comparisons}
+The competitive rate analysis reveals:
+\begin{itemize}
+    \item Variable availability of competitor rates
+    \item Significant price differentials between properties
+    \item Dynamic pricing strategies across competitors
+\end{itemize}
+
+\section{Missing Data Analysis}
+\subsection{Data Quality}
+\input{../tables/missing_values}
+
+The missing value analysis highlights:
+\begin{itemize}
+    \item Patterns in competitor rate availability
+    \item Complete data for core booking features
+    \item Strategic handling of missing values required for modeling
+\end{itemize}
+
+\section{Implications for Modeling}
+Based on the analysis, several key considerations emerge:
+\begin{itemize}
+    \item Feature engineering opportunities from temporal patterns
+    \item Need for careful handling of outliers in price and duration
+    \item Potential for competitive rate features despite missing data
+    \item Importance of normalized location and review scores
+\end{itemize}
+
+\section{Recommendations}
+\begin{enumerate}
+    \item Implement robust outlier handling for extreme values
+    \item Consider seasonality in booking windows and stay duration
+    \item Develop composite features from guest and room relationships
+    \item Account for missing competitor rates in model design
+\end{enumerate}
+
+\section{Appendix: Visualizations}
+\subsection{Distribution Plots}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{../plots/price_usd_enhanced_distribution.png}
+\caption{Price Distribution Analysis}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{../plots/prop_location_score1_enhanced_distribution.png}
+\caption{Location Score Distribution}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{../plots/srch_booking_window_enhanced_distribution.png}
+\caption{Booking Window Distribution}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{../plots/competitor_price_diffs.png}
+\caption{Competitor Price Differences}
+\end{figure}
+
+\end{document}

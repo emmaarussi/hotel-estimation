@@ -22,6 +22,55 @@ def create_latex_table(df, caption, label, filename):
     with open(f'data/analysis/tables/{filename}.tex', 'w') as f:
         f.write(latex_table)
 
+def analyze_basic_statistics(df):
+    """Analyze basic statistics of all variables"""
+    # Get data types and basic info
+    data_types = pd.DataFrame({
+        'Type': df.dtypes,
+        'Non-Null Count': df.count(),
+        'Null Count': df.isnull().sum(),
+        'Null %': df.isnull().sum() / len(df) * 100,
+        'Unique Values': df.nunique(),
+        'Memory Usage': df.memory_usage(deep=True)
+    })
+    
+    # Calculate statistics for numerical columns
+    numeric_stats = df.describe(include=[np.number])
+    
+    # Calculate statistics for categorical columns
+    categorical_stats = df.describe(include=['object'])
+    
+    # Create LaTeX tables
+    create_latex_table(
+        data_types,
+        'Variable Types and Basic Information',
+        'tab:data_types',
+        'data_types'
+    )
+    
+    create_latex_table(
+        numeric_stats,
+        'Numerical Variables Statistics',
+        'tab:numeric_stats',
+        'numeric_stats'
+    )
+    
+    create_latex_table(
+        categorical_stats,
+        'Categorical Variables Statistics',
+        'tab:categorical_stats',
+        'categorical_stats'
+    )
+    
+    # Print summary
+    print("\nDataset Summary:")
+    print(f"Total number of variables: {len(df.columns)}")
+    print(f"Number of numerical variables: {len(df.select_dtypes(include=[np.number]).columns)}")
+    print(f"Number of categorical variables: {len(df.select_dtypes(include=['object']).columns)}")
+    print(f"Number of boolean variables: {len(df.select_dtypes(include=['bool']).columns)}")
+    print(f"Total number of rows: {len(df)}")
+    print(f"Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
+
 def analyze_missing_values(df):
     """Analyze missing values and create LaTeX table"""
     # Calculate missing value statistics
@@ -61,12 +110,38 @@ def create_enhanced_distribution_plot(df, column, output_dir):
     
     # Create figure with two subplots and extra space for stats
     fig = plt.figure(figsize=(15, 10))
-    gs = fig.add_gridspec(2, 2, width_ratios=[4, 1])
+    
+    # Create GridSpec with explicit spacing
+    gs = fig.add_gridspec(
+        2, 2,
+        width_ratios=[4, 1],
+        height_ratios=[1, 1],
+        bottom=0.1,
+        left=0.1,
+        right=0.9,
+        hspace=0.3,
+        wspace=0.3
+    )
+    
     ax1 = fig.add_subplot(gs[0, 0])
     ax2 = fig.add_subplot(gs[1, 0])
     stats_ax = fig.add_subplot(gs[:, 1])
     
-    fig.suptitle(f'Distribution Analysis of {column}', y=0.95)
+    # Clear and configure stats panel
+    stats_ax.clear()
+    stats_ax.set_xticks([])
+    stats_ax.set_yticks([])
+    stats_ax.spines['top'].set_visible(False)
+    stats_ax.spines['right'].set_visible(False)
+    stats_ax.spines['bottom'].set_visible(False)
+    stats_ax.spines['left'].set_visible(False)
+    
+    # Format and add title to stats panel
+    title = column.replace('_', ' ').title()
+    stats_ax.text(0.5, 1.05, f'Distribution Analysis:\n{title}',
+                 ha='center', va='top',
+                 fontsize=12, fontweight='bold',
+                 transform=stats_ax.transAxes)
     
     # Calculate statistics for outlier detection
     Q1 = df[column].quantile(0.25)
@@ -103,22 +178,24 @@ def create_enhanced_distribution_plot(df, column, output_dir):
         f'Std: {df[column].std():.2f}',
         f'',
         f'Outlier Analysis:',
+        f'',
         f'Q1: {Q1:.2f}',
         f'Q3: {Q3:.2f}',
         f'IQR: {IQR:.2f}',
+        f'',
         f'Lower bound: {lower_bound:.2f}',
         f'Upper bound: {upper_bound:.2f}',
-        f'% Outliers: {100 * (1 - len(filtered_data)/len(df)):.1f}%'
+        f'',
+        f'Outlier %: {100 * (1 - len(filtered_data) / len(df)):.1f}%'
     ]
     
     # Hide stats axis frame and ticks
     stats_ax.axis('off')
     
     # Add stats text
-    stats_ax.text(0, 0.5, '\n'.join(stats_text),
-                 va='center', ha='left',
-                 fontsize=10)
-    
+    stats_ax.text(0.1, 0.9, '\n'.join(stats_text),
+                 transform=stats_ax.transAxes,
+                 va='top', family='monospace')
 
     plt.tight_layout(rect=[0, 0, 0.95, 1])  # Reserve space for right-side stats
     output_path = f'{output_dir}/{column}_enhanced_distribution.png'
@@ -428,10 +505,13 @@ def main():
         chunk = optimize_dtypes(chunk)
         
         if i == 0:  # First chunk
+            print("\nAnalyzing basic statistics...")
+            analyze_basic_statistics(chunk)
+            
             print("\nAnalyzing missing values...")
             analyze_missing_values(chunk)
             
-            print("Analyzing numerical distributions...")
+            print("\nAnalyzing numerical distributions...")
             analyze_numerical_distributions(chunk)
         
         # These analyses can be done on the full dataset by accumulating results

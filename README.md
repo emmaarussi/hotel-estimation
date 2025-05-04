@@ -23,12 +23,15 @@ hotel-estimation/
 ## Features
 
 ### Data Analysis
-- Enhanced distribution plots with outlier handling
-- Statistical analysis of numerical features
-- Missing value analysis and visualization
-- Conversion rate analysis by price quartiles
-- Competitor rate analysis
-- Search pattern analysis
+- Dataset composition: 54 variables (53 numerical, 1 categorical)
+- Enhanced distribution plots with outlier handling and statistical panels
+- Comprehensive variable type analysis and memory usage optimization
+- Missing value patterns and visualization
+- Search behavior analysis:
+  - Average stay: 2.37 days (75% ≤ 3 days)
+  - Booking window: 38.5 days average (75% within 51 days)
+  - Room occupancy: 1.97 adults, 0.34 children per booking
+- Competitive rate analysis with price differentials
 
 ### Data Preprocessing
 - Memory-efficient data processing using chunks
@@ -52,10 +55,13 @@ hotel-estimation/
 - Search pattern distributions
 
 ### Analysis Outputs
-- LaTeX tables for statistical summaries
-- Enhanced distribution plots with detailed statistics
-- Comprehensive data quality reports
-- Search pattern insights
+- LaTeX report with comprehensive findings in `data/analysis/report/`
+- Statistical tables in `data/analysis/tables/`:
+  - Data types and basic information
+  - Numerical variable statistics
+  - Missing value patterns
+- Enhanced distribution plots with statistical panels
+- Search pattern visualizations
 - Competitive pricing analysis
 
 ## Getting Started
