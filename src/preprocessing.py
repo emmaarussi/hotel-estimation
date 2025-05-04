@@ -20,7 +20,7 @@ class HotelDataPreprocessor:
             2: 150,    # 2-star hotels
             3: 200,    # 3-star hotels
             4: 250,    # 4-star hotels
-            5: 300    # 5-star hotels
+            5: 370    # 5-star hotels
         }
         
         # Cap prices based on star rating
@@ -116,6 +116,9 @@ class HotelDataPreprocessor:
         """
         Normalize numerical features to prevent scale issues
         """
+        # Save original price before normalization
+        df['price_usd_original'] = df['price_usd'].copy()
+        
         numerical_features = [
             'price_usd', 'orig_destination_distance',
             'prop_location_score1', 'prop_location_score2',
