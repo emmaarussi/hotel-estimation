@@ -1,46 +1,75 @@
-# Hotel Price Estimation
+# Hotel Click and Booking Prediction
 
-This project aims to develop a sophisticated hotel price estimation system that can predict hotel room rates based on various factors such as location, amenities, seasonality, and market conditions.
+This project implements a machine learning system to predict which hotel properties users are most likely to click on and book based on search results data. The model uses LightGBM for learning-to-rank optimization to improve search result rankings.
 
 ## Project Structure
 
 ```
 hotel-estimation/
 ├── data/
-│   ├── raw/         # Raw data files
-│   └── processed/   # Cleaned and processed data
-├── docs/            # Documentation
-├── notebooks/       # Jupyter notebooks for exploration and analysis
-├── src/            # Source code
-└── tests/          # Unit tests
+│   └── raw/         # Raw training data (training_set_VU_DM.csv)
+├── src/
+│   ├── preprocess.py  # Data preprocessing and feature engineering
+│   └── train_model.py  # Model training and evaluation
+└── requirements.txt    # Project dependencies
 ```
+
+## Features
+
+### Data Preprocessing
+- Temporal feature extraction (hour, day, month)
+- Price-related feature engineering
+- Competitor analysis features
+- Location score processing
+- Historical user preference features
+- Search context features
+
+### Model Implementation
+- LightGBM ranking model
+- Hyperparameter optimization using Optuna
+- Learning-to-rank objective (LambdaRank)
+- Evaluation metrics:
+  - AUC-ROC for clicks and bookings
+  - Average Precision
+  - NDCG@10 for ranking quality
 
 ## Setup
 
-1. Clone the repository
-```bash
-git clone https://github.com/[your-username]/hotel-estimation.git
-cd hotel-estimation
-```
-
-2. Create a virtual environment (recommended)
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies
+1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-## Future Features
+2. Prepare your data:
+- Place the training dataset (`training_set_VU_DM.csv`) in the `data/raw/` directory
 
-- Data collection from various hotel booking platforms
-- Feature engineering for hotel attributes
-- Price prediction models
-- API for real-time price estimates
-- Web interface for easy access
+3. Run the model:
+```bash
+python src/train_model.py
+```
+
+## Model Details
+
+The system uses a LightGBM model optimized for ranking tasks with the following key components:
+
+1. Feature Engineering:
+   - Temporal patterns
+   - Price comparisons
+   - User history
+   - Property characteristics
+   - Search context
+
+2. Training Pipeline:
+   - Data preprocessing
+   - Feature scaling and encoding
+   - Hyperparameter optimization
+   - Model training with early stopping
+   - Performance evaluation
+
+3. Evaluation Metrics:
+   - Click-through rate prediction
+   - Booking probability prediction
+   - Ranking quality assessment
 
 ## Contributing
 

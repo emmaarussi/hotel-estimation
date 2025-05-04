@@ -1,0 +1,85 @@
+Hotel Booking Dataset Preprocessing Documentation
+===========================================
+
+This document describes the preprocessing steps applied to create the clean dataset (clean_training_set.csv).
+
+Dataset Statistics:
+-----------------
+- Original rows: 4,958,347
+- Processed in: 50 chunks of 100,000 rows each
+- Output file size: 877.51 MB
+
+Preprocessing Steps:
+------------------
+
+1. Price Outlier Handling:
+   - Applied price caps based on hotel star rating:
+     * Unrated/0-star: $1,000
+     * 1-star: $500
+     * 2-star: $1,000
+     * 3-star: $2,000
+     * 4-star: $5,000
+     * 5-star: $10,000
+
+2. Competitor Data Processing:
+   - Created binary flags for competitor rate availability (comp1_available to comp8_available)
+   - Calculated total number of available competitor rates
+   - Computed mean price difference with competitors where rates are available
+   - Missing competitor rates treated as unavailable (0)
+
+3. Location Score Processing:
+   - Handled missing prop_location_score2 (22% missing)
+   - Used simple imputation: location_score2 = location_score1 * 0.7
+   - Maintains relative location quality while accounting for typically lower secondary scores
+
+4. Distance Processing:
+   - Handled missing orig_destination_distance (32% missing)
+   - Applied rule-based imputation:
+     * Same country searches: 50 distance units
+     * Different country searches: 500 distance units
+   - Preserves the domestic vs. international search pattern
+
+5. Review Score Processing:
+   - Handled missing review scores (0.15% missing)
+   - Imputed missing values with mean score per star rating
+   - Preserves rating patterns within hotel categories
+
+6. Historical Data Processing:
+   - Created binary flag 'has_booking_history'
+   - Handled missing historical data (95% missing):
+     * visitor_hist_starrating: filled with 0
+     * visitor_hist_adr_usd: filled with 0
+   - Missing values indicate no previous bookings
+
+7. Numerical Feature Normalization:
+   - Applied to key numerical features:
+     * price_usd
+     * orig_destination_distance
+     * prop_location_score1
+     * prop_location_score2
+     * prop_review_score
+     * prop_log_historical_price
+   - Used StandardScaler (zero mean, unit variance)
+
+Output Features:
+--------------
+The cleaned dataset includes all original features plus:
+1. New binary flags:
+   - comp1_available to comp8_available
+   - has_booking_history
+
+2. Aggregated competitor metrics:
+   - comp_rates_available (count of available competitor rates)
+   - mean_comp_price_diff (average price difference with competitors)
+
+3. Normalized versions of numerical features
+
+Usage Notes:
+-----------
+1. The cleaned dataset is ready for model training
+2. All numerical features are normalized
+3. No missing values remain in the dataset
+4. New features provide additional signals for the learning-to-rank problem
+5. Original raw data is preserved, all transformations are reversible
+
+Last Updated: 2025-05-04
