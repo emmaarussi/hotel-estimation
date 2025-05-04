@@ -23,6 +23,11 @@ wheels/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# Data
+data/raw/
+data/processed/clean_training_set.csv
+data/processed/*.csv
+
 # Environment
 .env
 .venv
