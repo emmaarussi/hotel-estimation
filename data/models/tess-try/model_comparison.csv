@@ -1,0 +1,4 @@
+Model,Task,AUC,PR-AUC,F1 Score,Top Feature,NDCG@5,NDCG@10
+Logistic Regression (Classification),Binary Classification (booking),0.9829931254101576,0.6886567731953248,0.5924713584288053,prop_historical_br,,
+LightGBM (Classification),Binary Classification (booking),0.9870831374193,0.7349131558799554,0.6381275882927737,prop_historical_br,,
+LightGBM (LambdaRank),Learning-to-Rank (relevance score),,,,prop_historical_ctr,0.8654174162987017,0.8643322806123224

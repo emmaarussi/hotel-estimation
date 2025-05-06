@@ -1,0 +1,5 @@
+group,count,cumulative_importance
+Critical,0,0.5
+Important,2,0.4
+Useful,12,0.09
+Marginal,72,0.01
