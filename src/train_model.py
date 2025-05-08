@@ -1,8 +1,10 @@
 import numpy as np
+import pandas as pd
 import lightgbm as lgb
 from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.model_selection import train_test_split
 import optuna
-from preprocess import load_and_preprocess_data, prepare_features_and_targets
+from feature_engineering import RankingFeatureEngineer
 
 def create_lgb_dataset(X, y, group_ids=None):
     """Create LightGBM dataset with group information for ranking"""
@@ -16,6 +18,8 @@ def objective(trial, train_data, valid_data):
     param = {
         "objective": "lambdarank",
         "metric": "ndcg",
+        "ndcg_eval_at": [10],
+        "feature_pre_filter": False,
         "boosting_type": "gbdt",
         "n_estimators": trial.suggest_int("n_estimators", 100, 500),
         "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.1),
@@ -32,7 +36,8 @@ def objective(trial, train_data, valid_data):
     
     model = lgb.train(param, train_data, valid_sets=[valid_data], 
                       num_boost_round=param["n_estimators"],
-                      early_stopping_rounds=50, verbose_eval=False)
+                      callbacks=[lgb.early_stopping(stopping_rounds=50),
+                                lgb.log_evaluation(period=0)])
     
     return model.best_score["valid_0"]["ndcg@10"]
 
@@ -53,6 +58,7 @@ def train_ranking_model(X_train, y_train, X_val, y_val, feature_names):
     best_params.update({
         "objective": "lambdarank",
         "metric": "ndcg",
+        "ndcg_eval_at": [10],
         "boosting_type": "gbdt",
         "random_state": 42
     })
@@ -60,7 +66,8 @@ def train_ranking_model(X_train, y_train, X_val, y_val, feature_names):
     print("Training final model with best parameters...")
     final_model = lgb.train(best_params, train_data, valid_sets=[valid_data],
                            num_boost_round=best_params["n_estimators"],
-                           early_stopping_rounds=50)
+                           callbacks=[lgb.early_stopping(stopping_rounds=50),
+                                    lgb.log_evaluation(period=0)])
     
     # Feature importance
     importance = pd.DataFrame({
@@ -95,14 +102,27 @@ def evaluate_model(model, X_test, y_test):
     }
 
 if __name__ == "__main__":
-    # Load and preprocess data
-    print("Loading and preprocessing data...")
-    df = load_and_preprocess_data("data/raw/training_set_VU_DM.csv")
+    # Load clean data
+    print("Loading clean data...")
+    df = pd.read_csv("data/processed/clean_training_set.csv")
+    
+    # Create features
+    print("Creating features...")
+    feature_engineer = RankingFeatureEngineer()
+    df_featured = feature_engineer.create_ranking_features(df)
     
     # Prepare features and targets
     print("Preparing features and targets...")
-    results = prepare_features_and_targets(df)
-    X_train, X_test, y_train, y_test, feature_names = results[:5]
+    target_cols = ['click_bool', 'booking_bool']
+    feature_cols = [col for col in df_featured.columns 
+                   if col not in target_cols + ['gross_bookings_usd']]
+    
+    X = df_featured[feature_cols]
+    y = df_featured[target_cols]
+    feature_names = feature_cols
+    
+    # Split the data
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
     # Train model
     print("Training model...")
