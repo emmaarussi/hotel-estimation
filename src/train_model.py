@@ -2,7 +2,7 @@ import numpy as np
 import lightgbm as lgb
 from sklearn.metrics import roc_auc_score, average_precision_score
 import optuna
-from preprocess import load_and_preprocess_data, prepare_features_and_targets
+from preprocessing import load_and_preprocess_data, prepare_features_and_targets
 
 def create_lgb_dataset(X, y, group_ids=None):
     """Create LightGBM dataset with group information for ranking"""
