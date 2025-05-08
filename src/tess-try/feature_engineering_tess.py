@@ -23,6 +23,14 @@ class EnhancedFeatureEngineer:
         time_aggs.columns = ['srch_destination_id', 'dest_avg_price', 'dest_price_std']
         df = df.merge(time_aggs, on='srch_destination_id', how='left')
         
+        # Advanced temporal features (from top solutions)
+        # Month-destination interaction (captures seasonality effects)
+        df['dest_month'] = df['srch_destination_id'].astype(str) + '_' + df['month'].astype(str)
+        
+        # Booking window features
+        df['advance_booking_days'] = (df['srch_co_time'] - df['srch_ci_time']).dt.days if 'srch_co_time' in df.columns and 'srch_ci_time' in df.columns else df['srch_booking_window']
+        df['booking_window_bucket'] = pd.qcut(df['srch_booking_window'], q=5, labels=False, duplicates='drop')
+        
         return df
     
     def _create_price_features(self, df):
@@ -41,6 +49,19 @@ class EnhancedFeatureEngineer:
         
         # Normalize price by star rating
         df['price_per_star'] = df['price_usd'] / df['prop_starrating'].clip(lower=1)
+        
+        # Advanced price features (from top solutions)
+        # Group-based price normalization (3rd place solution approach)
+        for group_col in ['srch_destination_id', 'prop_country_id']:
+            if group_col in df.columns:
+                group_mean = df.groupby(group_col)['price_usd'].transform('mean')
+                group_std = df.groupby(group_col)['price_usd'].transform('std')
+                df[f'price_norm_by_{group_col}'] = (df['price_usd'] - group_mean) / group_std.clip(lower=1)
+        
+        # Historical price comparison (2nd place solution approach)
+        if 'prop_avg_price' in df.columns:
+            df['price_diff_from_hist'] = df['price_usd'] - df['prop_avg_price']
+            df['price_ratio_to_hist'] = df['price_usd'] / df['prop_avg_price'].clip(lower=1)
         
         return df
     
@@ -87,6 +108,29 @@ class EnhancedFeatureEngineer:
         df['star_rank'] = df.groupby('srch_id')['prop_starrating'].rank(method='dense', ascending=False)
         df['location_rank'] = df.groupby('srch_id')['prop_location_score1'].rank(method='dense', ascending=False)
         
+        # Monotonic features (3rd place solution approach)
+        # Calculate target means for monotonic transformations
+        if 'booking_bool' in df.columns and df['booking_bool'].sum() > 0:
+            booking_star_mean = df.loc[df['booking_bool'] == 1, 'prop_starrating'].mean()
+            booking_review_mean = df.loc[df['booking_bool'] == 1, 'prop_review_score'].mean()
+            booking_location_mean = df.loc[df['booking_bool'] == 1, 'prop_location_score1'].mean()
+            
+            # Create monotonic features (distance from optimal value)
+            df['prop_starrating_monotonic'] = abs(df['prop_starrating'] - booking_star_mean)
+            df['prop_review_monotonic'] = abs(df['prop_review_score'] - booking_review_mean)
+            df['prop_location_monotonic'] = abs(df['prop_location_score1'] - booking_location_mean)
+        
+        # Log transform of historical metrics (helps with skewed distributions)
+        for col in ['prop_historical_ctr', 'prop_historical_br']:
+            if col in df.columns:
+                df[f'{col}_log'] = np.log1p(df[col])
+        
+        # Historical property position (4th place solution approach)
+        if 'position' in df.columns:
+            prop_position = df.groupby('prop_id')['position'].agg(['mean', 'median', 'std']).reset_index()
+            prop_position.columns = ['prop_id', 'prop_avg_position', 'prop_median_position', 'prop_position_std']
+            df = df.merge(prop_position, on='prop_id', how='left')
+        
         return df
     
     def _create_search_context_features(self, df):
@@ -127,18 +171,41 @@ class EnhancedFeatureEngineer:
     
     def _create_interaction_features(self, df):
         """Create interaction terms between features"""
-        # Price and quality interactions
+        # Quality per price features
         df['review_score_per_dollar'] = df['prop_review_score'] / df['price_usd'].clip(lower=1)
-        df['star_x_score'] = df['prop_starrating'] * df['prop_review_score']
-        
-        # Location and price interactions
+        df['star_per_dollar'] = df['prop_starrating'] / df['price_usd'].clip(lower=1)
         df['location_score_per_dollar'] = df['prop_location_score1'] / df['price_usd'].clip(lower=1)
         
-        # Star rating and price interactions
-        df['star_per_dollar'] = df['prop_starrating'] / df['price_usd'].clip(lower=1)
+        # Cross-features
+        df['star_x_score'] = df['prop_starrating'] * df['prop_review_score']
         
-        # Competitive position and quality
-        df['comp_position_x_review'] = df['comp_position_score'] * df['prop_review_score']
+        # Geographical features
+        if 'visitor_location_country_id' in df.columns and 'prop_country_id' in df.columns:
+            df['is_domestic'] = (df['visitor_location_country_id'] == df['prop_country_id']).astype(int)
+        
+        # Log-transform of distance (handle skewed distribution)
+        if 'orig_destination_distance' in df.columns:
+            df['log_orig_distance'] = np.log1p(df['orig_destination_distance'])
+        
+        # Advanced interaction features (from top solutions)
+        # Composite features using the F1×max(F2)+F2 formula (4th place solution)
+        if 'prop_starrating' in df.columns and 'prop_review_score' in df.columns:
+            max_review = df['prop_review_score'].max()
+            df['star_review_composite'] = df['prop_starrating'] * max_review + df['prop_review_score']
+        
+        if 'prop_location_score1' in df.columns and 'prop_review_score' in df.columns:
+            max_location = df['prop_location_score1'].max()
+            df['location_review_composite'] = df['prop_location_score1'] * max_review + df['prop_review_score']
+        
+        # User-property match features (3rd place solution)
+        if 'visitor_hist_starrating' in df.columns and 'prop_starrating' in df.columns:
+            df['user_star_diff'] = abs(df['visitor_hist_starrating'] - df['prop_starrating'])
+        
+        if 'visitor_hist_adr_usd' in df.columns and 'price_usd' in df.columns:
+            df['user_price_diff'] = df['price_usd'] - df['visitor_hist_adr_usd']
+            df['user_price_ratio'] = df['price_usd'] / df['visitor_hist_adr_usd'].clip(lower=1)
+            # Log transform to handle skewness
+            df['user_price_diff_log'] = np.log1p(abs(df['user_price_diff'])) * np.sign(df['user_price_diff'])
         
         return df
     

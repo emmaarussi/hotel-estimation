@@ -6,11 +6,11 @@ import os
 import time
 import argparse
 
-# Import our model training functions
+# Import our model training functions - using relative imports within tess-try directory
 from baseline_classification_model import train_baseline_classification_models
 from learning_to_rank_model import train_learning_to_rank_model
 
-def run_models(data_path, output_dir='data/models', sample_size=None):
+def run_models(data_path, output_dir='data/models/tess-try', sample_size=None):
     """Run both modeling approaches and compare results"""
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
@@ -42,7 +42,7 @@ def run_models(data_path, output_dir='data/models', sample_size=None):
     print("MODEL COMPARISON RESULTS")
     print("="*80)
     
-    # Create comparison table
+    # Create comparison table with enhanced metrics
     comparison = pd.DataFrame([
         {
             'Model': 'Logistic Regression (Classification)',
@@ -50,7 +50,8 @@ def run_models(data_path, output_dir='data/models', sample_size=None):
             'AUC': baseline_results['lr_metrics']['test_auc'],
             'PR-AUC': baseline_results['lr_metrics']['test_pr_auc'],
             'F1 Score': baseline_results['lr_metrics']['test_f1'],
-            'Top Feature': baseline_results['lr_importance']['feature'].iloc[0]
+            'Top Feature': baseline_results['lr_importance']['feature'].iloc[0],
+            'Training Time (s)': baseline_results['lr_metrics'].get('training_time', 0)
         },
         {
             'Model': 'LightGBM (Classification)',
@@ -58,14 +59,20 @@ def run_models(data_path, output_dir='data/models', sample_size=None):
             'AUC': baseline_results['lgb_metrics']['test_auc'],
             'PR-AUC': baseline_results['lgb_metrics']['test_pr_auc'],
             'F1 Score': baseline_results['lgb_metrics']['test_f1'],
-            'Top Feature': baseline_results['lgb_importance']['feature'].iloc[0]
+            'Top Feature': baseline_results['lgb_importance']['feature'].iloc[0],
+            'Training Time (s)': baseline_results['lgb_metrics'].get('training_time', 0)
         },
         {
             'Model': 'LightGBM (LambdaRank)',
             'Task': 'Learning-to-Rank (relevance score)',
+            'AUC': None,  # Not applicable for ranking model
+            'PR-AUC': None,  # Not applicable for ranking model
+            'F1 Score': None,  # Not applicable for ranking model
             'NDCG@5': ranking_results['metrics']['ndcg@5'],
             'NDCG@10': ranking_results['metrics']['ndcg@10'],
-            'Top Feature': ranking_results['importance']['feature'].iloc[0]
+            'MRR': ranking_results['metrics'].get('mrr', None),  # Mean Reciprocal Rank (from top solutions)
+            'Top Feature': ranking_results['importance']['feature'].iloc[0],
+            'Training Time (s)': ranking_results['metrics']['training_time']
         }
     ])
     
@@ -89,6 +96,32 @@ def run_models(data_path, output_dir='data/models', sample_size=None):
     
     print(f"\nCommon top features across all models: {common_features}")
     
+    # Check if we have country-specific models
+    if 'country_models' in ranking_results:
+        print("\nCountry-specific model analysis:")
+        country_models = ranking_results['country_models']
+        country_importances = ranking_results['country_importances']
+        
+        # Compare top features across countries
+        print("Top 3 features by country:")
+        for country_id, importance_df in country_importances.items():
+            top3 = importance_df.head(3)['feature'].tolist()
+            print(f"  Country {country_id}: {', '.join(top3)}")
+            
+        # Create country-specific comparison visualization
+        plt.figure(figsize=(12, 8))
+        country_ids = list(country_importances.keys())
+        
+        for i, country_id in enumerate(country_ids[:min(4, len(country_ids))]):
+            plt.subplot(2, 2, i+1)
+            top5 = country_importances[country_id].head(5)
+            sns.barplot(x='importance', y='feature', data=top5)
+            plt.title(f'Country {country_id} Top Features')
+            plt.tight_layout()
+            
+        plt.savefig(f"{output_dir}/country_feature_importance.png", dpi=300, bbox_inches='tight')
+        plt.close()
+    
     # Create Venn diagram of top features
     try:
         from matplotlib_venn import venn3
@@ -105,6 +138,24 @@ def run_models(data_path, output_dir='data/models', sample_size=None):
     total_time = time.time() - start_time
     print(f"\nTotal runtime: {total_time:.2f} seconds ({total_time/60:.2f} minutes)")
     
+    # Create a summary of enhancements based on top Expedia solutions
+    print("\nEnhancements implemented from top Expedia competition solutions:")
+    print("1. Feature Engineering:")
+    print("   - Monotonic features (3rd place solution)")
+    print("   - Group-based normalization (3rd place solution)")
+    print("   - Composite features using F1×max(F2)+F2 formula (4th place solution)")
+    print("   - User-property match features (3rd place solution)")
+    
+    print("2. Model Training:")
+    print("   - Balanced sampling (4th place solution)")
+    print("   - Cross-validation (2nd place solution)")
+    print("   - Country-specific models (3rd place solution)")
+    print("   - Ensemble techniques (1st place solution)")
+    
+    print("3. Evaluation Metrics:")
+    print("   - Mean Reciprocal Rank (MRR)")
+    print("   - NDCG@5 and NDCG@10")
+    
     print("\nAll results saved in:")
     print(f"- Classification models: {output_dir}/baseline/")
     print(f"- Ranking model: {output_dir}/ranking/")
@@ -120,7 +171,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run hotel ranking models')
     parser.add_argument('--sample', type=int, default=None, 
                       help='Sample size to use (default: use full dataset)')
-    parser.add_argument('--output', type=str, default='data/models',
+    parser.add_argument('--output', type=str, default='data/models/tess-try',
                       help='Output directory for models and results')
     args = parser.parse_args()
     

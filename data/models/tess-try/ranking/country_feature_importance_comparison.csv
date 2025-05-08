@@ -1,0 +1,11 @@
+Country_219_Top_Features,Country_100_Top_Features
+prop_historical_ctr,prop_historical_ctr
+prop_historical_br,position
+position,price_diff_from_mean
+random_bool,total_price
+orig_destination_distance,prop_log_historical_price
+prop_location_score2,price_rank
+location_score_diff,price_ratio_to_mean
+total_price,location_score_diff
+price_ratio_to_mean,prop_avg_price
+price_diff_from_mean,prop_historical_br
