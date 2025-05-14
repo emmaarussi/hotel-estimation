@@ -1,13 +1,38 @@
+# Standard data manipulation and analysis libraries
 import pandas as pd
 import numpy as np
+
+# For feature scaling and normalization
 from sklearn.preprocessing import StandardScaler
+
+# For datetime manipulation
 from datetime import datetime
+
+# For efficient dictionary-based statistics tracking
+from collections import defaultdict
 
 class EnhancedFeatureEngineer:
     def __init__(self):
         self.scaler = StandardScaler()
         self.global_stats = {}
-        
+        # Aggregation dictionaries for incremental features
+        self.hotel_stats = defaultdict(lambda: {
+            'cnt': 0,
+            'click': 0,
+            'book': 0,
+            'price_sum': 0.0,
+            'price_sq_sum': 0.0
+        })
+        self.dest_stats = defaultdict(lambda: {
+            'cnt': 0,
+            'click': 0,
+            'book': 0
+        })
+        self.country_stats = defaultdict(lambda: {
+            'cnt': 0,
+            'book': 0
+        })
+
     def _create_temporal_features(self, df):
         """Create time-based features"""
         df['date_time'] = pd.to_datetime(df['date_time'])
@@ -50,7 +75,7 @@ class EnhancedFeatureEngineer:
         # Normalize price by star rating
         df['price_per_star'] = df['price_usd'] / df['prop_starrating'].clip(lower=1)
 
-        # Advanced price features (from top solutions)(nieuw van tess!)
+        # Advanced price features 
         # Group-based price normalization (3rd place solution approach)
         for group_col in ['srch_destination_id', 'prop_country_id']:
             if group_col in df.columns:
@@ -66,22 +91,26 @@ class EnhancedFeatureEngineer:
         return df
     
     def _create_competitive_features(self, df):
-        """Create features based on competitor data"""
-        # Count available competitor rates
-        comp_rate_cols = [f'comp{i}_rate' for i in range(1, 9)]
-        df['comp_rates_available'] = df[comp_rate_cols].notnull().sum(axis=1)
-        
-        # Average price difference with competitors
-        for i in range(1, 9):
-            df[f'comp{i}_price_diff'] = df['price_usd'] - df[f'comp{i}_rate']
-        
-        price_diff_cols = [f'comp{i}_price_diff' for i in range(1, 9)]
-        df['avg_comp_price_diff'] = df[price_diff_cols].mean(axis=1)
-        df['cheaper_than_comp_count'] = (df[price_diff_cols] < 0).sum(axis=1)
-        
-        # Competitive position score
-        df['comp_position_score'] = df['cheaper_than_comp_count'] / df['comp_rates_available'].clip(lower=1)
-        
+        """Create features based on competitor data, robust to missing comp*_rate columns."""
+        # Find which comp*_rate columns exist
+        comp_rate_cols = [col for col in [f'comp{i}_rate' for i in range(1, 9)] if col in df.columns]
+        if comp_rate_cols:
+            df['comp_rates_available'] = df[comp_rate_cols].notnull().sum(axis=1)
+            # Average price difference with competitors
+            price_diff_cols = []
+            for col in comp_rate_cols:
+                diff_col = col.replace('_rate', '_price_diff')
+                df[diff_col] = df['price_usd'] - df[col]
+                price_diff_cols.append(diff_col)
+            df['avg_comp_price_diff'] = df[price_diff_cols].mean(axis=1)
+            df['cheaper_than_comp_count'] = (df[price_diff_cols] < 0).sum(axis=1)
+            df['comp_position_score'] = df['cheaper_than_comp_count'] / df['comp_rates_available'].clip(lower=1)
+        else:
+            # If no comp*_rate columns exist, fill with zeros or NaNs
+            df['comp_rates_available'] = 0
+            df['avg_comp_price_diff'] = np.nan
+            df['cheaper_than_comp_count'] = 0
+            df['comp_position_score'] = 0
         return df
     
     def _create_property_features(self, df):
@@ -102,36 +131,112 @@ class EnhancedFeatureEngineer:
                               'prop_avg_price', 'prop_price_std']
         
         df = df.merge(prop_history, on='prop_id', how='left')
-
-
-        # Add ranking features for important metrics
-        df['review_rank'] = df.groupby('srch_id')['prop_review_score'].rank(method='dense', ascending=False)
-        df['star_rank'] = df.groupby('srch_id')['prop_starrating'].rank(method='dense', ascending=False)
-        df['location_rank'] = df.groupby('srch_id')['prop_location_score1'].rank(method='dense', ascending=False)
         
-        # Monotonic features (3rd place solution approach) (nieuw van tess)
-        # Calculate target means for monotonic transformations
-        if 'booking_bool' in df.columns and df['booking_bool'].sum() > 0:
-            booking_star_mean = df.loc[df['booking_bool'] == 1, 'prop_starrating'].mean()
-            booking_review_mean = df.loc[df['booking_bool'] == 1, 'prop_review_score'].mean()
-            booking_location_mean = df.loc[df['booking_bool'] == 1, 'prop_location_score1'].mean()
-            
-            # Create monotonic features (distance from optimal value)
-            df['prop_starrating_monotonic'] = abs(df['prop_starrating'] - booking_star_mean)
-            df['prop_review_monotonic'] = abs(df['prop_review_score'] - booking_review_mean)
-            df['prop_location_monotonic'] = abs(df['prop_location_score1'] - booking_location_mean)
+        # Log transform of historical metrics (handle skewed distributions)
+        df['prop_historical_ctr_log'] = np.log1p(df['prop_historical_ctr'])
+        df['prop_historical_br_log'] = np.log1p(df['prop_historical_br'])
+        df['prop_log_historical_price'] = np.log1p(df['prop_avg_price'])
         
-        # Log transform of historical metrics (helps with skewed distributions)
-        for col in ['prop_historical_ctr', 'prop_historical_br']:
-            if col in df.columns:
-                df[f'{col}_log'] = np.log1p(df[col])
-        
-        # Historical property position (4th place solution approach)
+        # Position-based features (if position is available)
         if 'position' in df.columns:
-            prop_position = df.groupby('prop_id')['position'].agg(['mean', 'median', 'std']).reset_index()
-            prop_position.columns = ['prop_id', 'prop_avg_position', 'prop_median_position', 'prop_position_std']
-            df = df.merge(prop_position, on='prop_id', how='left')
+            position_stats = df.groupby('prop_id').agg({
+                'position': ['mean', 'median', 'std']
+            }).reset_index()
+            
+            position_stats.columns = ['prop_id', 'prop_avg_position', 'prop_median_position',
+                                     'prop_position_std']
+            
+            df = df.merge(position_stats, on='prop_id', how='left')
+            
+            # Position statistics per hotel and month (from 2nd place solution)
+            if 'month' in df.columns:
+                hotel_month_pos = df.groupby(['prop_id', 'month'])['position'].agg(['mean', 'median', 'std']).reset_index()
+                hotel_month_pos.columns = ['prop_id', 'month', 'hotel_month_pos_mean', 'hotel_month_pos_median', 'hotel_month_pos_std']
+                df = df.merge(hotel_month_pos, on=['prop_id', 'month'], how='left')
         
+        # Destination-based features
+        dest_stats = df.groupby('srch_destination_id').agg({
+            'click_bool': 'mean',
+            'booking_bool': 'mean'
+        }).reset_index()
+        
+        dest_stats.columns = ['srch_destination_id', 'dest_ctr', 'dest_br']
+        df = df.merge(dest_stats, on='srch_destination_id', how='left')
+        
+        # Target encoding for categorical variables (from 2nd place solution)
+        if 'prop_country_id' in df.columns:
+            country_stats = df.groupby('prop_country_id')['booking_bool'].mean().reset_index()
+            country_stats.columns = ['prop_country_id', 'country_booking_rate_enc']
+            df = df.merge(country_stats, on='prop_country_id', how='left')
+        
+        # Monotonic transformations (from 3rd place solution)
+        df['prop_starrating_monotonic'] = df['prop_starrating'].rank(pct=True)
+        df['prop_review_monotonic'] = df['prop_review_score'].rank(pct=True)
+        df['prop_location_monotonic'] = df['prop_location_score1'].rank(pct=True)
+        
+        # Binning of numerical variables (from 4th place solution)
+        df['price_bin'] = pd.qcut(df['price_usd'], 10, labels=False, duplicates='drop')
+        if 'orig_destination_distance' in df.columns:
+            df['distance_bin'] = pd.qcut(df['orig_destination_distance'].fillna(df['orig_destination_distance'].median()), 
+                                        10, labels=False, duplicates='drop')
+        
+        # Property brand indicator
+        if 'prop_brand_bool' not in df.columns:
+            # If not already present, try to infer from property ID patterns
+            # This is a placeholder - actual implementation would depend on domain knowledge
+            df['prop_brand_bool'] = 0
+        
+        # Random boolean feature (useful for randomization in models)
+        df['random_bool'] = np.random.randint(0, 2, size=len(df))
+        
+        # Incremental features (updated as we process data)
+        # These capture global statistics that evolve as we see more data
+        rows = df.to_dict('records')
+        hotel_features = []
+        
+        for row in rows:
+            pid = row['prop_id']
+            did = row['srch_destination_id']
+            cid = row['prop_country_id'] if 'prop_country_id' in row else 0
+            
+            # Update statistics
+            self.hotel_stats[pid]['cnt'] += 1
+            self.hotel_stats[pid]['click'] += row['click_bool']
+            self.hotel_stats[pid]['book'] += row['booking_bool']
+            self.hotel_stats[pid]['price_sum'] += row['price_usd']
+            self.hotel_stats[pid]['price_sq_sum'] += row['price_usd'] ** 2
+
+            self.dest_stats[did]['cnt'] += 1
+            self.dest_stats[did]['click'] += row['click_bool']
+            self.dest_stats[did]['book'] += row['booking_bool']
+
+            self.country_stats[cid]['cnt'] += 1
+            self.country_stats[cid]['book'] += row['booking_bool']
+
+            # assign new columns
+            hotel_features.append({
+                'hotel_ctr': self.hotel_stats[pid]['click'] / max(1, self.hotel_stats[pid]['cnt']),
+                'hotel_br': self.hotel_stats[pid]['book'] / max(1, self.hotel_stats[pid]['cnt']),
+                'hotel_price_mean': self.hotel_stats[pid]['price_sum'] / max(1, self.hotel_stats[pid]['cnt']),
+                'hotel_price_std': np.sqrt(
+                    max(0, self.hotel_stats[pid]['price_sq_sum'] / max(1, self.hotel_stats[pid]['cnt']) - 
+                        (self.hotel_stats[pid]['price_sum'] / max(1, self.hotel_stats[pid]['cnt'])) ** 2)
+                )
+            })
+
+        # Add the incremental features back to the dataframe
+        for col in ['hotel_ctr', 'hotel_br', 'hotel_price_mean', 'hotel_price_std']:
+            df[col] = [f[col] for f in hotel_features]
+
+        # --- visitor history deltas ---
+        if 'visitor_hist_starrating' in df.columns:
+            df['visitor_star_diff'] = (df['prop_starrating'] - df['visitor_hist_starrating']).abs()
+        if 'visitor_hist_adr_usd' in df.columns:
+            df['visitor_price_log_diff'] = np.log1p(df['price_usd']) - np.log1p(df['visitor_hist_adr_usd'])
+
+        # --- monotonic transform example ---
+        df['prop_starrating_monotonic'] = (df['prop_starrating'] - 4).abs()
+
         return df
     
     def _create_search_context_features(self, df):
@@ -151,6 +256,25 @@ class EnhancedFeatureEngineer:
         
         # Add log-distance feature
         df['log_orig_distance'] = np.log1p(df['orig_destination_distance'])
+        
+        # ------------------------
+        # Phase-1 extra features (inspired by top Kaggle solutions)
+        # ------------------------
+        # 1. Search-level property count
+        df['num_props_in_search'] = df.groupby('srch_id')['prop_id'].transform('count')
+
+        # 2. Within-search price statistics
+        df['price_min_search'] = df.groupby('srch_id')['price_usd'].transform('min')
+        df['price_max_search'] = df.groupby('srch_id')['price_usd'].transform('max')
+        df['price_std_search'] = df.groupby('srch_id')['price_usd'].transform('std').fillna(0)
+
+        # 3. Rank features inside each search result page
+        df['review_score_rank'] = df.groupby('srch_id')['prop_review_score'].rank(method='dense')
+        df['starrating_rank'] = df.groupby('srch_id')['prop_starrating'].rank(method='dense')
+
+        # 4. Reciprocal display rank (position)
+        if 'position' in df.columns:
+            df['reciprocal_rank'] = 1 / df['position'].clip(lower=1)
         
         return df
     
@@ -178,8 +302,15 @@ class EnhancedFeatureEngineer:
         df['star_per_dollar'] = df['prop_starrating'] / df['price_usd'].clip(lower=1)
         df['location_score_per_dollar'] = df['prop_location_score1'] / df['price_usd'].clip(lower=1)
         
-        # Cross-features
+        # Cross-features - Composite scores (from top solutions)
         df['star_x_score'] = df['prop_starrating'] * df['prop_review_score']
+        
+        # Use monotonic features if available (from 3rd place solution)
+        if 'prop_starrating_monotonic' in df.columns and 'prop_review_monotonic' in df.columns:
+            df['star_review_composite'] = df['prop_starrating_monotonic'] * df['prop_review_monotonic']
+        
+        if 'prop_location_monotonic' in df.columns and 'prop_review_monotonic' in df.columns:
+            df['location_review_composite'] = df['prop_location_monotonic'] * df['prop_review_monotonic']
         
         # Geographical features
         if 'visitor_location_country_id' in df.columns and 'prop_country_id' in df.columns:
@@ -189,25 +320,31 @@ class EnhancedFeatureEngineer:
         if 'orig_destination_distance' in df.columns:
             df['log_orig_distance'] = np.log1p(df['orig_destination_distance'])
         
-        # Advanced interaction features (from top solutions)
-        # Composite features using the F1×max(F2)+F2 formula (4th place solution)
-        if 'prop_starrating' in df.columns and 'prop_review_score' in df.columns:
-            max_review = df['prop_review_score'].max()
-            df['star_review_composite'] = df['prop_starrating'] * max_review + df['prop_review_score']
-        
-        if 'prop_location_score1' in df.columns and 'prop_review_score' in df.columns:
-            max_location = df['prop_location_score1'].max()
-            df['location_review_composite'] = df['prop_location_score1'] * max_review + df['prop_review_score']
-        
-        # User-property match features (3rd place solution)
+        # User preference matching (2nd place solution approach)
         if 'visitor_hist_starrating' in df.columns and 'prop_starrating' in df.columns:
             df['user_star_diff'] = abs(df['visitor_hist_starrating'] - df['prop_starrating'])
+            # Add normalized version
+            df['visitor_star_diff'] = (df['visitor_hist_starrating'] - df['prop_starrating']) / df['prop_starrating'].clip(lower=1)
         
         if 'visitor_hist_adr_usd' in df.columns and 'price_usd' in df.columns:
             df['user_price_diff'] = df['price_usd'] - df['visitor_hist_adr_usd']
             df['user_price_ratio'] = df['price_usd'] / df['visitor_hist_adr_usd'].clip(lower=1)
-            # Log transform to handle skewness
+            # Log transform to handle skewness (from 3rd place solution)
             df['user_price_diff_log'] = np.log1p(abs(df['user_price_diff'])) * np.sign(df['user_price_diff'])
+            df['visitor_price_log_diff'] = np.log1p(df['price_usd']) - np.log1p(df['visitor_hist_adr_usd'].clip(lower=1))
+        
+        # Listwise rank features (from 4th place solution)
+        df['price_rank_pct'] = df.groupby('srch_id')['price_usd'].rank(pct=True)
+        df['star_rank_pct'] = df.groupby('srch_id')['prop_starrating'].rank(pct=True)
+        df['review_rank_pct'] = df.groupby('srch_id')['prop_review_score'].rank(pct=True)
+        
+        # Add ranking features for important metrics if not already present
+        df['review_rank'] = df.groupby('srch_id')['prop_review_score'].rank(method='dense', ascending=False)
+        df['star_rank'] = df.groupby('srch_id')['prop_starrating'].rank(method='dense', ascending=False)
+        df['location_rank'] = df.groupby('srch_id')['prop_location_score1'].rank(method='dense', ascending=False)
+        
+        # Has booking history indicator
+        df['has_booking_history'] = (~df['visitor_hist_adr_usd'].isna()).astype(int)
         
         return df
     
@@ -301,31 +438,56 @@ def process_and_save_features(input_file, output_file, chunk_size=100000):
     return output_file
 
 if __name__ == "__main__":
-    # Example usage
-    input_file = "data/processed/clean_training_set.csv"  # Use the cleaned data from preprocessing
-    output_file = "data/processed/featured_training_set.csv"
-    
-    print("Starting enhanced feature engineering pipeline...")
-    output_path = process_and_save_features(input_file, output_file)
-    
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(description="Create enhanced features for Expedia hotel data")
+    parser.add_argument(
+        "--input",
+        "-i",
+        dest="input_file",
+        default="data/processed/clean_training_set.csv",
+        help="Path to the cleaned CSV file produced by preprocessing.",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        dest="output_file",
+        default="data/processed/featured_training_set.csv",
+        help="Path to save the feature-engineered CSV file.",
+    )
+    parser.add_argument(
+        "--chunk-size",
+        "-c",
+        dest="chunk_size",
+        type=int,
+        default=100000,
+        help="Number of rows to process per chunk.",
+    )
+
+    args = parser.parse_args()
+
+    print("Starting enhanced feature-engineering pipeline…")
+    output_path = process_and_save_features(args.input_file, args.output_file, args.chunk_size)
+
     # Verify the output
-    print("\nVerifying output file...")
+    print("\nVerifying output file…")
     df_sample = pd.read_csv(output_path, nrows=5)
     print("\nFirst 5 rows of processed data:")
     print(df_sample.head())
-    
+
     # Get file size
-    import os
     size_mb = os.path.getsize(output_path) / (1024 * 1024)
     print(f"\nProcessed file size: {size_mb:.2f} MB")
-    
+
     # Print feature list
     print("\nFeatures created:")
-    feature_cols = [col for col in df_sample.columns 
-                   if col not in ['click_bool', 'booking_bool', 'gross_bookings_usd']]
+    feature_cols = [
+        col for col in df_sample.columns if col not in [
+            "click_bool",
+            "booking_bool",
+            "gross_bookings_usd",
+        ]
+    ]
     for col in sorted(feature_cols):
         print(f"- {col}")
-
-
-
-  

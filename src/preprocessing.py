@@ -174,6 +174,17 @@ class HotelDataPreprocessor:
             print("Normalizing numerical features...")
             df = self._normalize_numerical_features(df)
         
+        # ---------------------------------------------
+        # Drop highly-missing columns, then impute missing values in rows
+        # ---------------------------------------------
+        print("Dropping columns with >95% missing values …")
+        na_threshold = 0.95
+        cols_to_drop = [c for c in df.columns if df[c].isna().mean() > na_threshold]
+        if cols_to_drop:
+            print(f"Dropping {len(cols_to_drop)} columns: {cols_to_drop[:10]} …")
+            df = df.drop(columns=cols_to_drop)
+        # Imputation logic is already present below for the remaining columns
+
         return df
 
 def save_preprocessed_data(input_file, output_file, chunk_size=100000):
@@ -220,19 +231,38 @@ def save_preprocessed_data(input_file, output_file, chunk_size=100000):
     return output_file
 
 if __name__ == "__main__":
-    input_file = "data/raw/training_set_VU_DM.csv"
-    output_file = "data/processed/clean_training_set.csv"
-    
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(description="Preprocess Expedia hotel data")
+    parser.add_argument(
+        "--input",
+        "-i",
+        dest="input_file",
+        default="data/raw/training_set_VU_DM.csv",
+        help="Path to the input CSV file.",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        dest="output_file",
+        default="data/processed/clean_training_set.csv",
+        help="Path to save the cleaned CSV file.",
+    )
+
+    args = parser.parse_args()
+
     print("Starting preprocessing pipeline...")
-    output_path = save_preprocessed_data(input_file, output_file)
-    
+    output_path = save_preprocessed_data(
+        args.input_file, args.output_file
+    )
+
     # Verify the output
     print("\nVerifying output file...")
     df_sample = pd.read_csv(output_path, nrows=5)
     print("\nFirst 5 rows of processed data:")
     print(df_sample.head())
-    
+
     # Get file size
-    import os
     size_mb = os.path.getsize(output_path) / (1024 * 1024)
     print(f"\nProcessed file size: {size_mb:.2f} MB")
