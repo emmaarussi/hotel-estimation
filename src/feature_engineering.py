@@ -325,7 +325,3 @@ if __name__ == "__main__":
                    if col not in ['click_bool', 'booking_bool', 'gross_bookings_usd']]
     for col in sorted(feature_cols):
         print(f"- {col}")
-
-
-
-  
