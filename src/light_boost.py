@@ -3,6 +3,7 @@ import lightgbm as lgb
 from pathlib import Path
 import numpy as np
 from datetime import datetime
+import sys
 
 from feature_engineering import EnhancedFeatureEngineer
 
