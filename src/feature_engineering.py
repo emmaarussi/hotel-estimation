@@ -25,7 +25,7 @@ class EnhancedFeatureEngineer:
 
         # Advanced temporal features (from top solutions)(nieuw van tess!)
         # Month-destination interaction (captures seasonality effects)
-        df['dest_month'] = df['srch_destination_id'].astype(str) + '_' + df['month'].astype(str)
+        #df['dest_month'] = df['srch_destination_id'].astype(str) + '_' + df['month'].astype(str) weggehaald geeft errors
         
         # Booking window features
         df['advance_booking_days'] = (df['srch_co_time'] - df['srch_ci_time']).dt.days if 'srch_co_time' in df.columns and 'srch_ci_time' in df.columns else df['srch_booking_window']
@@ -91,46 +91,46 @@ class EnhancedFeatureEngineer:
         df['location_score_product'] = df['prop_location_score1'] * df['prop_location_score2']
         
         # Property history features
-        prop_history = df.groupby('prop_id').agg({
-            'click_bool': ['mean', 'count'],
-            'booking_bool': ['mean', 'count'],
-            'price_usd': ['mean', 'std']
-        }).reset_index()
+        # prop_history = df.groupby('prop_id').agg({
+        #     'click_bool': ['mean', 'count'],
+        #     'booking_bool': ['mean', 'count'],
+        #     'price_usd': ['mean', 'std']
+        # }).reset_index()
         
-        prop_history.columns = ['prop_id', 'prop_historical_ctr', 'prop_click_count',
-                              'prop_historical_br', 'prop_booking_count',
-                              'prop_avg_price', 'prop_price_std']
+        # prop_history.columns = ['prop_id', 'prop_historical_ctr', 'prop_click_count',
+        #                       'prop_historical_br', 'prop_booking_count',
+        #                       'prop_avg_price', 'prop_price_std']
         
-        df = df.merge(prop_history, on='prop_id', how='left')
+        # df = df.merge(prop_history, on='prop_id', how='left')
 
 
-        # Add ranking features for important metrics
-        df['review_rank'] = df.groupby('srch_id')['prop_review_score'].rank(method='dense', ascending=False)
-        df['star_rank'] = df.groupby('srch_id')['prop_starrating'].rank(method='dense', ascending=False)
-        df['location_rank'] = df.groupby('srch_id')['prop_location_score1'].rank(method='dense', ascending=False)
+        # # Add ranking features for important metrics
+        # df['review_rank'] = df.groupby('srch_id')['prop_review_score'].rank(method='dense', ascending=False)
+        # df['star_rank'] = df.groupby('srch_id')['prop_starrating'].rank(method='dense', ascending=False)
+        # df['location_rank'] = df.groupby('srch_id')['prop_location_score1'].rank(method='dense', ascending=False)
         
-        # Monotonic features (3rd place solution approach) (nieuw van tess)
-        # Calculate target means for monotonic transformations
-        if 'booking_bool' in df.columns and df['booking_bool'].sum() > 0:
-            booking_star_mean = df.loc[df['booking_bool'] == 1, 'prop_starrating'].mean()
-            booking_review_mean = df.loc[df['booking_bool'] == 1, 'prop_review_score'].mean()
-            booking_location_mean = df.loc[df['booking_bool'] == 1, 'prop_location_score1'].mean()
+        # # Monotonic features (3rd place solution approach) (nieuw van tess)
+        # # Calculate target means for monotonic transformations
+        # if 'booking_bool' in df.columns and df['booking_bool'].sum() > 0:
+        #     booking_star_mean = df.loc[df['booking_bool'] == 1, 'prop_starrating'].mean()
+        #     booking_review_mean = df.loc[df['booking_bool'] == 1, 'prop_review_score'].mean()
+        #     booking_location_mean = df.loc[df['booking_bool'] == 1, 'prop_location_score1'].mean()
             
-            # Create monotonic features (distance from optimal value)
-            df['prop_starrating_monotonic'] = abs(df['prop_starrating'] - booking_star_mean)
-            df['prop_review_monotonic'] = abs(df['prop_review_score'] - booking_review_mean)
-            df['prop_location_monotonic'] = abs(df['prop_location_score1'] - booking_location_mean)
+        #     # Create monotonic features (distance from optimal value)
+        #     df['prop_starrating_monotonic'] = abs(df['prop_starrating'] - booking_star_mean)
+        #     df['prop_review_monotonic'] = abs(df['prop_review_score'] - booking_review_mean)
+        #     df['prop_location_monotonic'] = abs(df['prop_location_score1'] - booking_location_mean)
         
-        # Log transform of historical metrics (helps with skewed distributions)
-        for col in ['prop_historical_ctr', 'prop_historical_br']:
-            if col in df.columns:
-                df[f'{col}_log'] = np.log1p(df[col])
+        # # Log transform of historical metrics (helps with skewed distributions)
+        # for col in ['prop_historical_ctr', 'prop_historical_br']:
+        #     if col in df.columns:
+        #         df[f'{col}_log'] = np.log1p(df[col])
         
-        # Historical property position (4th place solution approach)
-        if 'position' in df.columns:
-            prop_position = df.groupby('prop_id')['position'].agg(['mean', 'median', 'std']).reset_index()
-            prop_position.columns = ['prop_id', 'prop_avg_position', 'prop_median_position', 'prop_position_std']
-            df = df.merge(prop_position, on='prop_id', how='left')
+        # # Historical property position (4th place solution approach)
+        # if 'position' in df.columns:
+        #     prop_position = df.groupby('prop_id')['position'].agg(['mean', 'median', 'std']).reset_index()
+        #     prop_position.columns = ['prop_id', 'prop_avg_position', 'prop_median_position', 'prop_position_std']
+        #     df = df.merge(prop_position, on='prop_id', how='left')
         
         return df
     
@@ -254,8 +254,9 @@ class EnhancedFeatureEngineer:
         print("Creating interaction features...")
         df = self._create_interaction_features(df)
         
-        print("Creating relevance score...")
-        df = self._create_relevance_score(df)
+        if is_training:
+            print("Creating relevance score...")
+            df = self._create_relevance_score(df)
         
         print("Handling missing values...")
         df = self._handle_missing_values(df)
@@ -263,7 +264,11 @@ class EnhancedFeatureEngineer:
         # Drop original datetime column and other unnecessary columns
         cols_to_drop = ['date_time'] + [f'comp{i}_{x}' for i in range(1, 9) 
                                       for x in ['rate', 'inv', 'rate_percent_diff']]
+        
         df = df.drop(columns=cols_to_drop, errors='ignore')
+        
+        if is_training:
+            df = df.drop(['position', 'click_bool', 'gross_bookings_usd', 'booking_bool'], axis=1)
         
         return df
 
