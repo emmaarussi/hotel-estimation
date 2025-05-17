@@ -1,5 +1,5 @@
 import pandas as pd
-#import lightgbm as lgb
+import lightgbm as lgb_std
 import optuna.integration.lightgbm as lgb #https://medium.com/optuna/lightgbm-tuner-new-optuna-integration-for-hyperparameter-optimization-8b7095e99258
 from lightgbm import early_stopping, log_evaluation
 from pathlib import Path
@@ -28,9 +28,9 @@ np.random.seed(123)
 unique_ids = train_full['srch_id'].unique()
 np.random.shuffle(unique_ids)
 n = len(unique_ids)
-train_ids = unique_ids[:int(0.2 * n)]
-val_ids = unique_ids[int(0.2 * n):int(0.3 * n)]
-test_ids = unique_ids[int(0.3 * n):]
+train_ids = unique_ids[:int(0.3 * n)]
+val_ids = unique_ids[int(0.5 * n):int(0.7 * n)]
+test_ids = unique_ids[int(0.8 * n):]
 
 train = train_full[train_full['srch_id'].isin(train_ids)].copy()
 val = train_full[train_full['srch_id'].isin(val_ids)].copy()
@@ -73,7 +73,7 @@ best_params, tuning_history = dict(), list()
 model = lgb.train(
     params,
     lgb_train,
-    num_boost_round=100,
+    num_boost_round=500,
     valid_sets=[lgb_train, lgb_val, lgb_test],
     valid_names=['train', 'val', 'test'],
     callbacks=[early_stopping(100), log_evaluation(100)]
@@ -84,6 +84,13 @@ best_iter = model.best_iteration
 test_scores = model.eval_valid(feval=None)
 best_params = model.params
 
+# Print top 20 most important features
+importances = model.feature_importance()
+feature_names = X_train.columns
+feat_imp = pd.Series(importances, index=feature_names).sort_values(ascending=False)
+print("Top 20 features by importance:")
+print(feat_imp.head(20))
+
 # Printing best scores
 # Gives evaluation metric on held out training data (extra test set)
 # Comparable score as kaggle submission
@@ -92,14 +99,33 @@ print(f"test score: {model.best_score['test']['ndcg@5']}")
 print('Best parameters')
 for k,v in best_params.items():
     print(k,v)
+    
+## Retrain using the best model:
+train_val_ids = np.concatenate([train_ids, val_ids])
+train_val = train_full[train_full['srch_id'].isin(train_val_ids)].copy()
+train_val_clean = feature_engineer.create_enhanced_features(train_val, is_training=True)
+X_train_val = train_val_clean.drop(['relevance_score', 'srch_id', 'prop_id'], axis=1)
+y_train_val = train_val_clean['relevance_score']
+group_train_val = train_val_clean.groupby('srch_id').size().to_list()
+lgb_train_val = lgb.Dataset(X_train_val, y_train_val, group=group_train_val)
 
+retrained_model = lgb_std.train(
+    best_params,
+    lgb_train_val,
+    num_boost_round=500,
+    valid_sets = [lgb_train_val, lgb_test],
+    valid_names = ['train_val', 'test'],
+    callbacks=[early_stopping(100), log_evaluation(100)]
+)
+
+print(f"retrained model score: {retrained_model.best_score['test']['ndcg@5']}")
 
 ## Preparing submission
 kaggle_test_clean = feature_engineer.create_enhanced_features(kaggle_test, is_training=False)
 X_kaggle_test = kaggle_test_clean.drop(['srch_id', 'prop_id'], axis=1)
 
 # Predict on the real test set
-kaggle_test_pred = model.predict(X_kaggle_test)
+kaggle_test_pred = retrained_model.predict(X_kaggle_test)
 
 submission = pd.DataFrame({
     'srch_id': kaggle_test_clean['srch_id'],

@@ -37,6 +37,7 @@ class EnhancedFeatureEngineer:
         """Create price-related features"""
         # log transformed price
         df['price_usd_log'] = np.log1p(df['price_usd'])
+        
         # Basic price features
         df['price_per_night'] = df['price_usd'] / df['srch_length_of_stay'].clip(lower=1)
         df['total_price'] = df['price_usd'] * df['srch_length_of_stay']
@@ -67,82 +68,103 @@ class EnhancedFeatureEngineer:
         
         return df
     
+    # def _create_competitive_features(self, df):
+    #     """Create features based on competitor data"""
+    #     # Count available competitor rates
+    #     comp_rate_cols = [f'comp{i}_rate' for i in range(1, 9)]
+    #     df['comp_rates_available'] = df[comp_rate_cols].notnull().sum(axis=1)
+        
+    #     # Average price difference with competitors
+    #     for i in range(1, 9):
+    #         df[f'comp{i}_price_diff'] = df['price_usd'] - df[f'comp{i}_rate']
+        
+    #     price_diff_cols = [f'comp{i}_price_diff' for i in range(1, 9)]
+    #     df['avg_comp_price_diff'] = df[price_diff_cols].mean(axis=1)
+    #     df['cheaper_than_comp_count'] = (df[price_diff_cols] < 0).sum(axis=1)
+        
+    #     # Competitive position score
+    #     df['comp_position_score'] = df['cheaper_than_comp_count'] / df['comp_rates_available'].clip(lower=1)
+        
+    #     return df
+    
     def _create_competitive_features(self, df):
-        """Create features based on competitor data"""
-        # Count available competitor rates
+        """Create features based on competitor data, correctly interpreting competitor columns."""
+        df = df.copy()
+
         comp_rate_cols = [f'comp{i}_rate' for i in range(1, 9)]
-        df['comp_rates_available'] = df[comp_rate_cols].notnull().sum(axis=1)
-        
-        # Average price difference with competitors
-        for i in range(1, 9):
-            df[f'comp{i}_price_diff'] = df['price_usd'] - df[f'comp{i}_rate']
-        
-        price_diff_cols = [f'comp{i}_price_diff' for i in range(1, 9)]
-        df['avg_comp_price_diff'] = df[price_diff_cols].mean(axis=1)
-        df['cheaper_than_comp_count'] = (df[price_diff_cols] < 0).sum(axis=1)
-        
-        # Competitive position score
-        df['comp_position_score'] = df['cheaper_than_comp_count'] / df['comp_rates_available'].clip(lower=1)
-        
+        comp_inv_cols = [f'comp{i}_inv' for i in range(1, 9)]
+        comp_percent_diff_cols = [f'comp{i}_rate_percent_diff' for i in range(1, 9)]
+
+        # Number of competitors for which we have information
+        df['comp_rate_info_count'] = df[comp_rate_cols].notnull().sum(axis=1)
+        df['comp_inv_info_count'] = df[comp_inv_cols].notnull().sum(axis=1)
+        df['comp_percent_diff_info_count'] = df[comp_percent_diff_cols].notnull().sum(axis=1)
+
+        # Aggregations for compX_rate (price comparison indicator)
+        # compX_rate: 1 (Expedia cheaper), 0 (same), -1 (Expedia higher)
+        df['expedia_cheaper_count'] = (df[comp_rate_cols] == 1).sum(axis=1)
+        df['expedia_expensive_count'] = (df[comp_rate_cols] == -1).sum(axis=1)
+        df['expedia_same_price_count'] = (df[comp_rate_cols] == 0).sum(axis=1)
+
+        # Overall price position score relative to competitors with rate info
+        # Ranges from -1 (Expedia is more expensive than all reporting competitors)
+        # to +1 (Expedia is cheaper than all reporting competitors)
+        df['expedia_price_advantage_score'] = \
+            (df['expedia_cheaper_count'] - df['expedia_expensive_count']) / df['comp_rate_info_count'].clip(lower=1)
+        df['expedia_price_advantage_score'].fillna(0, inplace=True) # Fill if no comp_rate_info_count
+
+        # Aggregations for compX_inv (inventory indicator)
+        # compX_inv: 1 (competitor no availability), 0 (both have availability)
+        df['comp_no_availability_count'] = (df[comp_inv_cols] == 1).sum(axis=1)
+
+        # Aggregations for compX_rate_percent_diff (absolute percentage difference)
+        # These will be NaN if no competitor has percent_diff data for a row
+        df['avg_comp_abs_rate_percent_diff'] = df[comp_percent_diff_cols].mean(axis=1)
+        df['min_comp_abs_rate_percent_diff'] = df[comp_percent_diff_cols].min(axis=1)
+        df['max_comp_abs_rate_percent_diff'] = df[comp_percent_diff_cols].max(axis=1)
+        df['median_comp_abs_rate_percent_diff'] = df[comp_percent_diff_cols].median(axis=1)
+        df['std_comp_abs_rate_percent_diff'] = df[comp_percent_diff_cols].std(axis=1)
+
+        # Fill NaNs for percent_diff aggregations - using -1 to indicate no data, or 0 for std if only one value
+        percent_diff_agg_cols = [
+            'avg_comp_abs_rate_percent_diff', 'min_comp_abs_rate_percent_diff',
+            'max_comp_abs_rate_percent_diff', 'median_comp_abs_rate_percent_diff'
+        ]
+        for col in percent_diff_agg_cols:
+            df[col].fillna(-1, inplace=True) # Using -1 to signify no data, as percent_diff is normally >=0
+        df['std_comp_abs_rate_percent_diff'].fillna(0, inplace=True) # Std can be 0 if 1 value or all same
+
+        # Boolean flags
+        df['has_any_comp_cheaper_than_expedia'] = (df['expedia_expensive_count'] > 0).astype(int)
+        df['has_any_comp_more_expensive_than_expedia'] = (df['expedia_cheaper_count'] > 0).astype(int)
+        df['has_any_comp_no_availability'] = (df['comp_no_availability_count'] > 0).astype(int)
+
         return df
     
     def _create_property_features(self, df):
-        """Create property-related features"""
-        # Location score features
+        """Create property-related features """
+        # Location score difference and product
         df['location_score_diff'] = df['prop_location_score1'] - df['prop_location_score2']
         df['location_score_product'] = df['prop_location_score1'] * df['prop_location_score2']
         
-        for col in ['prop_starrating', 'prop_review_score', 'prop_location_score1', 'prop_location_score2']:
+        # Ranking features within each search (srch_id)
+        df['review_rank'] = df.groupby('srch_id')['prop_review_score']\
+                              .rank(method='dense', ascending=False)
+        df['star_rank'] = df.groupby('srch_id')['prop_starrating']\
+                            .rank(method='dense', ascending=False)
+        df['location_rank'] = df.groupby('srch_id')['prop_location_score1']\
+                                .rank(method='dense', ascending=False)
+        
+        # Relative to search‐level means & z‐scores
+        for col in ['prop_starrating', 'prop_review_score',
+                    'prop_location_score1', 'prop_location_score2']:
             if col in df.columns:
-                group_mean = df.groupby('srch_id')[col].transform('mean')
-                group_std = df.groupby('srch_id')[col].transform('std').clip(lower=1e-6) # avoid division by zero
-                df[f'{col}_vs_srch_mean'] = df[col] - group_mean
-                df[f'{col}_srch_norm'] = (df[col] - group_mean) / group_std
-                # Fill NaNs that might arise if std is 0 for a group or from original NaNs
-                df[f'{col}_vs_srch_mean'].fillna(0, inplace=True)
+                grp_mean = df.groupby('srch_id')[col].transform('mean')
+                grp_std  = df.groupby('srch_id')[col].transform('std').clip(lower=1e-6) #lower for numerical stab
+                df[f'{col}_diff_srch_mean'] = df[col] - grp_mean # difference
+                df[f'{col}_srch_norm'] = (df[col] - grp_mean) / grp_std # z-score
+                df[f'{col}_diff_srch_mean'].fillna(0, inplace=True)
                 df[f'{col}_srch_norm'].fillna(0, inplace=True)
-        
-        # Property history features
-        # prop_history = df.groupby('prop_id').agg({
-        #     'click_bool': ['mean', 'count'],
-        #     'booking_bool': ['mean', 'count'],
-        #     'price_usd': ['mean', 'std']
-        # }).reset_index()
-        
-        # prop_history.columns = ['prop_id', 'prop_historical_ctr', 'prop_click_count',
-        #                       'prop_historical_br', 'prop_booking_count',
-        #                       'prop_avg_price', 'prop_price_std']
-        
-        # df = df.merge(prop_history, on='prop_id', how='left')
-
-
-        # # Add ranking features for important metrics
-        # df['review_rank'] = df.groupby('srch_id')['prop_review_score'].rank(method='dense', ascending=False)
-        # df['star_rank'] = df.groupby('srch_id')['prop_starrating'].rank(method='dense', ascending=False)
-        # df['location_rank'] = df.groupby('srch_id')['prop_location_score1'].rank(method='dense', ascending=False)
-        
-        # # Monotonic features (3rd place solution approach) (nieuw van tess)
-        # # Calculate target means for monotonic transformations
-        # if 'booking_bool' in df.columns and df['booking_bool'].sum() > 0:
-        #     booking_star_mean = df.loc[df['booking_bool'] == 1, 'prop_starrating'].mean()
-        #     booking_review_mean = df.loc[df['booking_bool'] == 1, 'prop_review_score'].mean()
-        #     booking_location_mean = df.loc[df['booking_bool'] == 1, 'prop_location_score1'].mean()
-            
-        #     # Create monotonic features (distance from optimal value)
-        #     df['prop_starrating_monotonic'] = abs(df['prop_starrating'] - booking_star_mean)
-        #     df['prop_review_monotonic'] = abs(df['prop_review_score'] - booking_review_mean)
-        #     df['prop_location_monotonic'] = abs(df['prop_location_score1'] - booking_location_mean)
-        
-        # # Log transform of historical metrics (helps with skewed distributions)
-        # for col in ['prop_historical_ctr', 'prop_historical_br']:
-        #     if col in df.columns:
-        #         df[f'{col}_log'] = np.log1p(df[col])
-        
-        # # Historical property position (4th place solution approach)
-        # if 'position' in df.columns:
-        #     prop_position = df.groupby('prop_id')['position'].agg(['mean', 'median', 'std']).reset_index()
-        #     prop_position.columns = ['prop_id', 'prop_avg_position', 'prop_median_position', 'prop_position_std']
-        #     df = df.merge(prop_position, on='prop_id', how='left')
         
         return df
     
@@ -225,8 +247,10 @@ class EnhancedFeatureEngineer:
     
     def _create_relevance_score(self, df):
         """Create a relevance score target (5*booking + 1*click)"""
-        # This is a common approach in learning-to-rank problems
-        df['relevance_score'] = 5 * df['booking_bool'] + 1 * df['click_bool']
+        
+        df['relevance_score'] = 0
+        df.loc[df['click_bool'] == 1, 'relevance_score'] = 1
+        df.loc[df['booking_bool'] == 1, 'relevance_score'] = 5
         
         return df
     
@@ -279,8 +303,10 @@ class EnhancedFeatureEngineer:
         
         df = df.drop(columns=cols_to_drop, errors='ignore')
         
-        if is_training:
-            df = df.drop(['position', 'click_bool', 'gross_bookings_usd', 'booking_bool'], axis=1)
+        training_only_columns = ['position', 'click_bool', 'gross_bookings_usd', 'booking_bool']
+        for col in training_only_columns:
+            if col in df.columns:
+                df = df.drop(col, axis = 1)
         
         return df
 
