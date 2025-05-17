@@ -246,7 +246,7 @@ class EnhancedFeatureEngineer:
         return df
     
     def _create_relevance_score(self, df):
-        """Create a relevance score target (5*booking + 1*click)"""
+        """Create a relevance score target"""
         
         df['relevance_score'] = 0
         df.loc[df['click_bool'] == 1, 'relevance_score'] = 1
