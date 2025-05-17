@@ -7,6 +7,7 @@ import numpy as np
 from datetime import datetime
 import sys
 import optuna
+import argparse
 
 from feature_engineering import EnhancedFeatureEngineer
 
@@ -28,9 +29,15 @@ np.random.seed(123)
 unique_ids = train_full['srch_id'].unique()
 np.random.shuffle(unique_ids)
 n = len(unique_ids)
+
 train_ids = unique_ids[:int(0.3 * n)]
 val_ids = unique_ids[int(0.5 * n):int(0.7 * n)]
 test_ids = unique_ids[int(0.8 * n):]
+
+# For quick runs
+# train_ids = unique_ids[:int(0.01 * n)]
+# val_ids = unique_ids[int(0.01 * n):int(0.02 * n)]
+# test_ids = unique_ids[int(0.95 * n):]
 
 train = train_full[train_full['srch_id'].isin(train_ids)].copy()
 val = train_full[train_full['srch_id'].isin(val_ids)].copy()
@@ -73,7 +80,7 @@ best_params, tuning_history = dict(), list()
 model = lgb.train(
     params,
     lgb_train,
-    num_boost_round=500,
+    num_boost_round= 500,
     valid_sets=[lgb_train, lgb_val, lgb_test],
     valid_names=['train', 'val', 'test'],
     callbacks=[early_stopping(100), log_evaluation(100)]
@@ -133,8 +140,18 @@ submission = pd.DataFrame({
     'eval_score': kaggle_test_pred
 })
 
-#TODO: save best model, feature importance etc, tuning......
-
 submission = submission.sort_values(['srch_id', 'eval_score'], ascending=[True, False])
 submission = submission[['srch_id', 'prop_id']]
-submission.to_csv(f'data/submission/test_{datetime.now().strftime("%m_%d_%H_%M_%S")}.csv', index=False)
+filename = f'data/submission/test_{datetime.now().strftime("%m_%d_%H_%M_%S")}'
+submission.to_csv(f'{filename}.csv', index=False)
+
+# Write to file
+with open(f'{filename}.txt', 'w') as f:
+    f.write(f"retrained model score: {retrained_model.best_score['test']['ndcg@5']}")
+    f.write('\n\nParameters')
+    for k,v in best_params.items():
+        f.write(f'\n{k}: {v}')
+    
+    f.write("\n\nTop 20 features by importance:")
+    f.write(f"\n{feat_imp.head(20)}")
+    
