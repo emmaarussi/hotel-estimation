@@ -1,15 +1,17 @@
 import pandas as pd
-import lightgbm as lgb
+#import lightgbm as lgb
+import optuna.integration.lightgbm as lgb #https://medium.com/optuna/lightgbm-tuner-new-optuna-integration-for-hyperparameter-optimization-8b7095e99258
+from lightgbm import early_stopping, log_evaluation
 from pathlib import Path
 import numpy as np
 from datetime import datetime
 import sys
+import optuna
 
 from feature_engineering import EnhancedFeatureEngineer
 
 path_train = Path('data/raw/training_set_VU_DM.csv')
 path_test = Path('data/raw/test_set_VU_DM.csv')
-
 
 # Checking path for compatibility with notebooks
 if path_test.exists():
@@ -26,9 +28,9 @@ np.random.seed(123)
 unique_ids = train_full['srch_id'].unique()
 np.random.shuffle(unique_ids)
 n = len(unique_ids)
-train_ids = unique_ids[:int(0.4 * n)]
-val_ids = unique_ids[int(0.4 * n):int(0.5 * n)]
-test_ids = unique_ids[int(0.5 * n):]
+train_ids = unique_ids[:int(0.2 * n)]
+val_ids = unique_ids[int(0.2 * n):int(0.3 * n)]
+test_ids = unique_ids[int(0.3 * n):]
 
 train = train_full[train_full['srch_id'].isin(train_ids)].copy()
 val = train_full[train_full['srch_id'].isin(val_ids)].copy()
@@ -57,13 +59,16 @@ lgb_train = lgb.Dataset(X_train, y_train, group=group_train)
 lgb_val = lgb.Dataset(X_val, y_val, group=group_val, reference=lgb_train)
 lgb_test = lgb.Dataset(X_test, y_test, group=group_test, reference=lgb_train)
 
+
 params = {
-    'objective': 'lambdarank',
-    'metric': 'ndcg',
-    'eval_at': 5,
-    'learning_rate': 0.1,
-    'num_leaves': 31
+     'objective': 'lambdarank',
+     'metric': 'ndcg',
+     'eval_at': 5,
+     "boosting_type": "gbdt",
+     "verbosity": -1
 }
+
+best_params, tuning_history = dict(), list()
 
 model = lgb.train(
     params,
@@ -71,24 +76,23 @@ model = lgb.train(
     num_boost_round=100,
     valid_sets=[lgb_train, lgb_val, lgb_test],
     valid_names=['train', 'val', 'test'],
-    early_stopping_rounds=10
+    callbacks=[early_stopping(100), log_evaluation(100)]
 )
-
-# Evaluate on test set 
-test_pred = model.predict(X_test)
-test_results = pd.concat([test_clean['srch_id'], test_clean['prop_id'], pd.Series(test_pred)], axis=1)
-test_results.columns = ['srch_id', 'prop_id', 'eval_score']
-test_results = test_results.sort_values(['srch_id', 'eval_score'], ascending=[True, False])
-
 
 # Evaluate NDCG5 on the test set
 best_iter = model.best_iteration
 test_scores = model.eval_valid(feval=None)
+best_params = model.params
 
 # Printing best scores
 # Gives evaluation metric on held out training data (extra test set)
 # Comparable score as kaggle submission
 print(f"test score: {model.best_score['test']['ndcg@5']}")
+
+print('Best parameters')
+for k,v in best_params.items():
+    print(k,v)
+
 
 ## Preparing submission
 kaggle_test_clean = feature_engineer.create_enhanced_features(kaggle_test, is_training=False)
