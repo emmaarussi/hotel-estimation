@@ -35,6 +35,8 @@ class EnhancedFeatureEngineer:
     
     def _create_price_features(self, df):
         """Create price-related features"""
+        # log transformed price
+        df['price_usd_log'] = np.log1p(df['price_usd'])
         # Basic price features
         df['price_per_night'] = df['price_usd'] / df['srch_length_of_stay'].clip(lower=1)
         df['total_price'] = df['price_usd'] * df['srch_length_of_stay']
@@ -89,6 +91,16 @@ class EnhancedFeatureEngineer:
         # Location score features
         df['location_score_diff'] = df['prop_location_score1'] - df['prop_location_score2']
         df['location_score_product'] = df['prop_location_score1'] * df['prop_location_score2']
+        
+        for col in ['prop_starrating', 'prop_review_score', 'prop_location_score1', 'prop_location_score2']:
+            if col in df.columns:
+                group_mean = df.groupby('srch_id')[col].transform('mean')
+                group_std = df.groupby('srch_id')[col].transform('std').clip(lower=1e-6) # avoid division by zero
+                df[f'{col}_vs_srch_mean'] = df[col] - group_mean
+                df[f'{col}_srch_norm'] = (df[col] - group_mean) / group_std
+                # Fill NaNs that might arise if std is 0 for a group or from original NaNs
+                df[f'{col}_vs_srch_mean'].fillna(0, inplace=True)
+                df[f'{col}_srch_norm'].fillna(0, inplace=True)
         
         # Property history features
         # prop_history = df.groupby('prop_id').agg({
