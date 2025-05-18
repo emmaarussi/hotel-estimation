@@ -34,26 +34,27 @@ class HotelDataPreprocessor:
         """
         Handle missing competitor data
         - Most competitor data is missing (52-98% missing rates)
-        - Create binary flags for availability
-        - Compute aggregate competitive metrics
+        - Simplified to only keep aggregate metrics
         """
-        # Create competitor availability flags
-        for i in range(1, 9):
-            df[f'comp{i}_available'] = (~df[f'comp{i}_rate'].isna()).astype(int)
-        
-        # Count available competitor rates
-        df['comp_rates_available'] = sum(df[f'comp{i}_available'] for i in range(1, 9))
-        
         # Calculate mean price difference where available
         price_diffs = []
+        comp_available_count = 0
+        
         for i in range(1, 9):
             mask = ~df[f'comp{i}_rate'].isna()
+            comp_available_count += mask.astype(int)
             if mask.any():
                 diff = df.loc[mask, 'price_usd'] - df.loc[mask, f'comp{i}_rate']
                 price_diffs.append(diff)
         
-        df['mean_comp_price_diff'] = pd.concat(price_diffs, axis=1).mean(axis=1)
-        df['mean_comp_price_diff'].fillna(0, inplace=True)
+        # Only keep aggregate metrics
+        df['comp_rates_available'] = comp_available_count
+        df['mean_comp_price_diff'] = pd.concat(price_diffs, axis=1).mean(axis=1).fillna(0)
+        
+        # Drop individual competitor columns
+        comp_cols = [f'comp{i}_{suffix}' for i in range(1, 9) 
+                    for suffix in ['rate', 'inv', 'rate_percent_diff']]
+        df.drop(columns=comp_cols, errors='ignore', inplace=True)
         
         return df
     
@@ -100,29 +101,33 @@ class HotelDataPreprocessor:
     def _handle_missing_historical_data(self, df):
         """
         Handle missing historical data
-        - visitor_hist_starrating and visitor_hist_adr_usd have ~95% missing values
-        - Missing values indicate no previous bookings
+        - Simplified to only keep binary flag for booking history
+        - Remove high-missing-value historical features
         """
         # Create binary flag for users with history
         df['has_booking_history'] = (~df['visitor_hist_starrating'].isna()).astype(int)
         
-        # Fill missing values with appropriate defaults
-        df['visitor_hist_starrating'].fillna(0, inplace=True)
-        df['visitor_hist_adr_usd'].fillna(0, inplace=True)
+        # Drop high-missing-value columns
+        df.drop(columns=['visitor_hist_starrating', 'visitor_hist_adr_usd'], 
+                errors='ignore', inplace=True)
         
         return df
     
     def _normalize_numerical_features(self, df):
         """
         Normalize numerical features to prevent scale issues
+        Removed redundant and derived features
         """
         # Save original price before normalization
         df['price_usd_original'] = df['price_usd'].copy()
         
+        # Core numerical features only
         numerical_features = [
-            'price_usd', 'orig_destination_distance',
-            'prop_location_score1', 'prop_location_score2',
-            'prop_review_score', 'prop_log_historical_price'
+            'price_usd',
+            'orig_destination_distance',
+            'prop_location_score1',
+            'prop_review_score',
+            'prop_starrating'
         ]
         
         # Store means and stds for future use
@@ -133,6 +138,20 @@ class HotelDataPreprocessor:
         
         # Normalize features
         df[numerical_features] = (df[numerical_features] - df[numerical_features].mean()) / df[numerical_features].std()
+        
+        # Drop redundant/derived features
+        columns_to_drop = [
+            'random_bool',  # Not useful for prediction
+            'prop_starrating_monotonic',  # Redundant with prop_starrating
+            'prop_review_monotonic',      # Redundant with prop_review_score
+            'prop_location_monotonic',    # Redundant with prop_location_score
+            'prop_historical_ctr_log',    # Keep only non-log version
+            'prop_historical_br_log',     # Keep only non-log version
+            'prop_price_std',             # High missing rate
+            'prop_position_std',          # High missing rate
+            'dest_month'                  # High memory usage, can be recreated
+        ]
+        df.drop(columns=columns_to_drop, errors='ignore', inplace=True)
         
         return df
     
