@@ -6,9 +6,7 @@ from pathlib import Path
 from datetime import datetime
 from feature_engineering import EnhancedFeatureEngineer
 
-# ----------------------------------------------------------------------------
-# 1. Load and split data by 'srch_id' into train/val/test subsets
-# ----------------------------------------------------------------------------
+# Load and split data by 'srch_id' into train/val/test subsets
 path_train = Path('data/raw/training_set_VU_DM.csv')
 path_test = Path('data/raw/test_set_VU_DM.csv')
 
@@ -33,9 +31,7 @@ train = df_full[df_full['srch_id'].isin(ids_train)].copy()
 val   = df_full[df_full['srch_id'].isin(ids_val)].copy()
 test  = df_full[df_full['srch_id'].isin(ids_test)].copy()
 
-# ----------------------------------------------------------------------------
-# 2. Feature engineering
-# ----------------------------------------------------------------------------
+# Feature engineering
 fe = EnhancedFeatureEngineer()
 train_fe = fe.create_enhanced_features(train, is_training=True)
 val_fe   = fe.create_enhanced_features(val,   is_training=True)
@@ -60,9 +56,8 @@ dval.set_group(group_val)
 dtest = xgb.DMatrix(X_test, label=y_test)
 dtest.set_group(group_test)
 
-# ----------------------------------------------------------------------------
-# 3. Hyperparameter tuning with Optuna
-# ----------------------------------------------------------------------------
+
+# Hyperparameter tuning with Optuna
 def objective(trial):
     params = {
         'objective': 'rank:ndcg',
@@ -84,7 +79,7 @@ def objective(trial):
     bst = xgb.train(
         params,
         dtrain,
-        num_boost_round=5,
+        num_boost_round=500, #1000
         evals=[(dval, 'validation')],
         early_stopping_rounds=50,
         evals_result=evals_result,
@@ -98,9 +93,7 @@ study.optimize(objective, n_trials=50)
 best_params = study.best_params
 print("Best hyperparameters:\n", best_params)
 
-# ----------------------------------------------------------------------------
-# 4. Final training on train + validation
-# ----------------------------------------------------------------------------
+# Final training on train + validation
 # Combine train & val
 df_tv = pd.concat([train, val], ignore_index=True)
 df_tv_fe = fe.create_enhanced_features(df_tv, is_training=True)
@@ -129,16 +122,14 @@ bst_final = xgb.train(
     dtrain_full,
     num_boost_round=best_nrounds,
     evals=[(dtest, 'test')],
-    early_stopping_rounds=50,
+    early_stopping_rounds=1000,
     verbose_eval=True
 )
 
 # Save the model
 bst_final.save_model('data/models/xgb_best_model.json')
 
-# ----------------------------------------------------------------------------
-# 5. Feature importance & evaluation
-# ----------------------------------------------------------------------------
+# Feature importance & evaluation
 importance = bst_final.get_score(importance_type='weight')
 feat_imp = pd.Series(importance).sort_values(ascending=False)
 print("Top 20 features by weight importance:")
@@ -148,9 +139,8 @@ print(feat_imp.head(20))
 ev = bst_final.eval(dtest)
 print(f"Test eval: {ev}")
 
-# ----------------------------------------------------------------------------
-# 6. Prepare Kaggle submission
-# ----------------------------------------------------------------------------
+# 6 Prepare Kaggle submission
+
 df_k_fe = fe.create_enhanced_features(df_kaggle, is_training=False)
 X_kaggle = df_k_fe.drop(['srch_id', 'prop_id'], axis=1)
 dm_kaggle = xgb.DMatrix(X_kaggle)

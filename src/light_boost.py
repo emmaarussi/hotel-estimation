@@ -28,7 +28,7 @@ np.random.seed(123)
 unique_ids = train_full['srch_id'].unique()
 np.random.shuffle(unique_ids)
 n = len(unique_ids)
-train_ids = unique_ids[:int(0.3 * n)]
+train_ids = unique_ids[:int(0.1 * n)]
 val_ids = unique_ids[int(0.5 * n):int(0.7 * n)]
 test_ids = unique_ids[int(0.8 * n):]
 
@@ -73,7 +73,7 @@ best_params, tuning_history = dict(), list()
 model = lgb.train(
     params,
     lgb_train,
-    num_boost_round=500,
+    num_boost_round=500, #500
     valid_sets=[lgb_train, lgb_val, lgb_test],
     valid_names=['train', 'val', 'test'],
     callbacks=[early_stopping(100), log_evaluation(100)]
@@ -115,10 +115,12 @@ retrained_model = lgb_std.train(
     num_boost_round=500,
     valid_sets = [lgb_train_val, lgb_test],
     valid_names = ['train_val', 'test'],
-    callbacks=[early_stopping(100), log_evaluation(100)]
+    callbacks=[early_stopping(25), log_evaluation(100)]
 )
 
 print(f"retrained model score: {retrained_model.best_score['test']['ndcg@5']}")
+
+retrained_model.save_model('data/models/lgb_best_model.txt')
 
 ## Preparing submission
 kaggle_test_clean = feature_engineer.create_enhanced_features(kaggle_test, is_training=False)
@@ -133,7 +135,6 @@ submission = pd.DataFrame({
     'eval_score': kaggle_test_pred
 })
 
-#TODO: save best model, feature importance etc, tuning......
 
 submission = submission.sort_values(['srch_id', 'eval_score'], ascending=[True, False])
 submission = submission[['srch_id', 'prop_id']]
